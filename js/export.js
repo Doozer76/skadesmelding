@@ -1,4 +1,4 @@
-/* export.js – laver en .xlsx med tre faner: Behandlinger, Skader og Vagter.
+/* export.js – laver en .xlsx med to faner: Behandlinger (én række pr. behandling, skaderne som kolonner) og Vagter.
  * Kræver vendor/xlsx.mini.min.js (SheetJS). Ingen data forlader enheden – filen downloades lokalt.
  */
 (function () {
@@ -14,6 +14,7 @@
 
   function rows(treatments, shifts, device) {
     const sorted = treatments.slice().sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    const maxInj = Math.max(1, ...sorted.map(t => t.injuries.length));
     const beh = sorted.map(t => {
       const r = {
         'Journalnr.': t.jnr,
@@ -26,15 +27,26 @@
         'Udgår': t.type === 'Frivillig' ? yesNo(t.out) : '',
         'Triage': t.triage,
         'Melding': t.urgency,
-        'Antal skader': t.injuries.length,
-        'Skader (oversigt)': t.injuries.map(i => i.part + ' – ' + i.kind).join('; '),
+        'Antal skader': t.injuries.length
+      };
+      for (let n = 0; n < maxInj; n++) {
+        const i = t.injuries[n] || {}, k = 'Skade ' + (n + 1) + ' – ';
+        r[k + 'legemsdel'] = i.part || '';
+        r[k + 'side'] = i.part ? (i.view === 'back' ? 'Bagside' : 'Forside') : '';
+        r[k + 'type'] = i.kind || '';
+        r[k + 'beskrivelse'] = i.desc || '';
+        r[k + 'årsag'] = i.cause || '';
+        r[k + 'område'] = loc(i);
+        r[k + 'rum'] = i.loc && i.loc !== 'Andet' ? (i.room || '') : '';
+      }
+      Object.assign(r, {
         'Udført behandling': t.treatment || '',
         'Info om infektion': (t.injuries || []).some(i => i.kind === 'Sår') ? yesNo(t.infection) : '',
         'Assistance': (t.assist || []).filter(a => a !== 'Ingen').join(', ') || 'Ingen',
         'Vagtlæge rekvireret kl.': (t.reqTimes && t.reqTimes['Vagtlæge']) || '',
         'Ambulance rekvireret kl.': (t.reqTimes && t.reqTimes['Ambulance']) || '',
         'Assistance andet': t.assistOther || ''
-      };
+      });
       MATS.forEach(m => { r['Mat. ' + m] = (t.mats && t.mats[m]) || 0; });
       Object.assign(r, {
         'Mat. andet (hvad)': t.matOther || '',
@@ -49,22 +61,6 @@
       return r;
     });
 
-    const skader = [];
-    sorted.forEach(t => t.injuries.forEach((i, n) => skader.push({
-      'Journalnr.': t.jnr,
-      'Skade nr.': n + 1,
-      'Dato': date(t.start),
-      'Legemsdel': i.part,
-      'Side': i.view === 'back' ? 'Bagside' : 'Forside',
-      'Skadetype': i.kind,
-      'Beskrivelse': i.desc || '',
-      'Årsag': i.cause || '',
-      'Område': loc(i),
-      'Rum': i.loc && i.loc !== 'Andet' ? (i.room || '') : '',
-      'Triage': t.triage,
-      'Melding': t.urgency
-    })));
-
     const vagter = shifts.slice().sort((a, b) => (a.start || '').localeCompare(b.start || '')).map(s => ({
       'Førstehjælper': s.userName,
       'Dato': date(s.start),
@@ -73,7 +69,7 @@
       'Behandlinger': treatments.filter(t => t.shiftId === s.id).length,
       'Enhed': device
     }));
-    return { beh, skader, vagter };
+    return { beh, vagter };
   }
 
   function sheet(data, headers) {
@@ -92,7 +88,6 @@
       const r = rows(treatments, shifts, device);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, sheet(r.beh, ['Journalnr.']), 'Behandlinger');
-      XLSX.utils.book_append_sheet(wb, sheet(r.skader, ['Journalnr.']), 'Skader');
       XLSX.utils.book_append_sheet(wb, sheet(r.vagter, ['Førstehjælper']), 'Vagter');
       const now = new Date().toISOString();
       const safe = String(device || 'enhed').replace(/[^\wæøåÆØÅ-]+/g, '-');

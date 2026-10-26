@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.5-test';
+  const APP_VERSION = '1.0.6-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -305,7 +305,7 @@
         ${tile(c(t => t.urgency === 'Haste'), 'Haste')}${tile(c(t => t.urgency === 'Normal'), 'Normal')}</div>
         ${kinds.length ? `<div class="card col" style="gap:8px"><span class="k">Skadetyper</span>${kinds.map(([k, n]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${n}</b></div>`).join('')}</div>` : ''}
         <button class="btn btn-primary" data-a="export">Eksportér til Excel (.xlsx)</button>
-        <p class="hint">Eksporten indeholder alle behandlinger, skader og vagter på denne enhed. Filen gemmes lokalt i Overførsler/Filer.</p>
+        <p class="hint">Eksporten indeholder alle behandlinger (med skader) og vagter på denne enhed. Filen gemmes lokalt i Overførsler/Filer.</p>
         <button class="btn" data-a="openSettings">Indstillinger</button>
         <button class="btn btn-danger" data-a="askWipe">Slet alle testdata</button></div>`;
     },
