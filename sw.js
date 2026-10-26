@@ -1,7 +1,7 @@
 /* sw.js – gør appen tilgængelig uden netværk.
  * Hæv CACHE-versionen, hver gang en fil i appen ændres, så telefonerne henter den nye udgave.
  */
-const CACHE = 'skadesmelding-v1.0.0';
+const CACHE = 'skadesmelding-v1.0.1';
 const FILES = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const FILES = [
   './vendor/xlsx.mini.min.js',
   './fonts/atkinson-hyperlegible-latin-400-normal.woff2',
   './fonts/atkinson-hyperlegible-latin-700-normal.woff2',
-  './icons/dystopia-logo.png',
+  './icons/logo.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

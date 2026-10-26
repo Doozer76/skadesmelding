@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.0-test';
+  const APP_VERSION = '1.0.1-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -160,8 +160,7 @@
         <div style="height:4px"></div>
         <button class="btn btn-ghost" data-a="openPin">Dashboard (kræver PIN)</button>
         <div style="display:flex;align-items:center;justify-content:center;gap:24px;padding:24px 0 8px;border-top:1px solid #23262D;margin-top:8px">
-          <svg width="72" height="72" viewBox="0 0 72 72" role="img" aria-label="Førstehjælp"><rect width="72" height="72" rx="8" fill="#1E8E45"/><rect x="28" y="12" width="16" height="48" fill="#fff"/><rect x="12" y="28" width="48" height="16" fill="#fff"/></svg>
-          <img src="icons/dystopia-logo.png" alt="Dystopia Entertainment" style="height:72px;width:auto">
+          <img src="icons/logo.png" alt="Dystopia Entertainment – førstehjælp" style="width:140px;height:140px;border-radius:16px">
         </div>
         ${isStandalone() ? '' : '<p class="hint" style="text-align:center">Tip: Installér appen på hjemmeskærmen – iPhone: Del → Føj til hjemmeskærm. Android: ⋮ → Installér app.</p>'}
         <p class="hint" style="text-align:center;font-size:12px">${esc(S.settings.deviceName)} · journalnr. ${esc(fmtJnr(S.settings.rangeStart))}–${esc(fmtJnr(S.settings.rangeEnd))} · v${APP_VERSION}</p></div>`;
