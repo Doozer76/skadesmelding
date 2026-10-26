@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.2-test';
+  const APP_VERSION = '1.0.3-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -15,7 +15,7 @@
   const dt = iso => { if (!iso) return ''; const d = new Date(iso); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + tm(iso); };
   const clone = o => JSON.parse(JSON.stringify(o));
   const blankCur = () => ({ partId: '', view: 'front', part: '', kind: '', desc: '', cause: '', loc: '', room: '', locOther: '' });
-  const blankP = () => ({ jnr: '', start: '', end: '', type: '', role: '', out: false, reqTimes: { 'Vagtlæge': '', 'Ambulance': '' }, contact: false, triage: '', urgency: '', injuries: [], cur: blankCur(), treatment: '', assist: [], assistOther: '', mats: { 'Plaster': 0, 'Forbinding': 0, 'Støtteforbinding': 0, 'Ispose': 0, 'Andet': 0 }, matOther: '' });
+  const blankP = () => ({ jnr: '', start: '', end: '', type: '', role: '', out: false, reqTimes: { 'Vagtlæge': '', 'Ambulance': '' }, contact: false, triage: '', urgency: '', injuries: [], cur: blankCur(), treatment: '', infection: false, assist: [], assistOther: '', mats: { 'Plaster': 0, 'Forbinding': 0, 'Støtteforbinding': 0, 'Ispose': 0, 'Andet': 0 }, matOther: '' });
   const defaultSettings = () => ({ deviceName: '', prefix: 'hh' + String(new Date().getFullYear()).slice(-2), rangeStart: 1, rangeEnd: 199, next: 1, pin: '' });
   const STATUS_TEXT = { lokal: 'Gemt lokalt', 'i kø': 'I kø', sendt: 'Sendt' };
 
@@ -28,8 +28,8 @@
     pin: '', unlocked: false, viewId: null, form: {}
   };
 
-  const ORDER = ['patient', 'triage', 'body', 'describe', 'location', 'treatment', 'assist', 'materials'];
-  const BACK = { hub: 'home', patient: 'hub', triage: 'patient', body: 'triage', describe: 'body', location: 'describe', treatment: 'location', assist: 'treatment', materials: 'assist', history: 'hub', detail: 'history', pin: 'home', dash: 'home', settings: 'dash' };
+  const ORDER = ['patient', 'triage', 'body', 'describe', 'treatment', 'assist', 'location', 'materials'];
+  const BACK = { hub: 'home', patient: 'hub', triage: 'patient', body: 'triage', describe: 'body', treatment: 'describe', assist: 'treatment', location: 'assist', materials: 'location', history: 'hub', detail: 'history', pin: 'home', dash: 'home', settings: 'dash' };
   const TITLES = { setup: 'Opsætning', home: 'Skadesmelding', patient: 'Patient', triage: 'Triage', body: 'Skade', describe: 'Skade', location: 'Sted', treatment: 'Behandling', assist: 'Assistance', materials: 'Materialer', history: 'Mine behandlinger', detail: 'Behandling', pin: 'Dashboard', dash: 'Dashboard', settings: 'Indstillinger' };
   const TRI = { 'Rød': '#E5534B', 'Gul': '#E8C547', 'Grøn': '#4CB86A' };
   const ZONES = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India', 'Andet'];
@@ -56,6 +56,8 @@
   const locText = i => !i.loc ? '' : (i.loc === 'Andet' ? (i.locOther || 'Andet') : i.loc + (i.room ? ', rum ' + i.room : ''));
   const matText = p => Object.keys(p.mats).filter(k => p.mats[k] > 0).map(k => (k === 'Andet' && p.matOther ? p.matOther : k) + ' ×' + p.mats[k]).join(', ');
   const assistText = p => p.assist.map(a => a === 'Andet' && p.assistOther ? 'Andet: ' + p.assistOther : (p.reqTimes && p.reqTimes[a] ? a + ' (rekv. ' + p.reqTimes[a] + ')' : a)).join(', ');
+  const hasSaar = p => p.injuries.some(i => i.kind === 'Sår') || (p.cur && p.cur.kind === 'Sår');
+  const INFECTION_TXT = 'Er oplyst om opmærksomhed på tegn på infektion (hævelse, rødme, varme, smerter)';
   const typeText = p => p.type === 'Frivillig' ? 'Frivillig' + (p.role ? ' (' + p.role + ')' : '') + (p.out ? ' · Udgår' : '') : (p.type || '–');
   const timeText = t => tm(t.start) + (t.end ? '–' + tm(t.end) : '');
   const user = () => S.users.find(u => u.id === S.activeId) || { name: '' };
@@ -100,7 +102,7 @@
       list.push({ k: n + ' · sted', v: locText(inj) || '–', go: () => startEdit('location', i) });
     });
     if (cur.partId && !S.histId) list.push({ k: 'Skade (i gang)', v: cur.part + (cur.kind ? ' · ' + cur.kind : ''), go: () => go('body') });
-    list.push({ k: 'Udført behandling', v: p.treatment || '–', go: page('treatment') });
+    list.push({ k: 'Udført behandling', v: (p.treatment || '–') + (hasSaar(p) ? ' · info om infektion: ' + (p.infection ? 'ja' : 'nej') : ''), go: page('treatment') });
     list.push({ k: 'Assistance', v: assistText(p) || '–', go: page('assist') });
     list.push({ k: 'Materialer', v: matText(p) || '–', go: page('materials') });
     return list;
@@ -225,8 +227,8 @@
     describe() {
       const c = S.p.cur;
       return `<div class="col" style="gap:22px"><p class="hint">${esc(c.part)} · ${esc(c.kind)}</p>
-        ${area('desc', 'Beskrivelse af skaden', 'cur.desc', c.desc, 'Beskriv skaden så godt som muligt, i så mange detaljer som muligt')}
-        ${area('cause', 'Årsag til skade', 'cur.cause', c.cause, 'Beskriv årsag til skaden i så mange detaljer som muligt')}</div>`;
+        ${area('desc', 'Beskrivelse af skaden *', 'cur.desc', c.desc, 'Beskriv skaden så godt som muligt, i så mange detaljer som muligt')}
+        ${area('cause', 'Årsag til skade *', 'cur.cause', c.cause, 'Beskriv årsag til skaden i så mange detaljer som muligt')}</div>`;
     },
 
     location() {
@@ -239,13 +241,16 @@
     },
 
     treatment() {
-      return `<div class="col">${area('treat', 'Udført behandling', 'p.treatment', S.p.treatment, 'Beskriv den udførte behandling så godt som muligt. Skriv "Ingen" hvis du ikke har lavet en behandling', 'min-height:220px')}</div>`;
+      const p = S.p;
+      return `<div class="col">${area('treat', 'Udført behandling *', 'p.treatment', p.treatment, 'Beskriv den udførte behandling så godt som muligt. Skriv "Ingen" hvis du ikke har lavet en behandling', 'min-height:200px')}
+        ${hasSaar(p) ? `<label class="chk" style="align-items:flex-start"><input type="checkbox" data-f="p.infection" ${p.infection ? 'checked' : ''} style="margin-top:2px"><span style="display:flex;flex-direction:column;gap:4px">Info om infektion<span class="hint" style="font-weight:400">${INFECTION_TXT}</span></span></label>` : ''}</div>`;
     },
 
     assist() {
       const p = S.p;
       return `<div class="col" style="gap:22px"><div><span class="lbl">Assistancebehov</span><p class="hint" style="margin-bottom:10px">Vælg alle der passer – eller Ingen.</p>
-        <div class="grid2">${['Vagtlæge', 'Ambulance', 'SL/NK', 'Andet'].map(n => seg(p.assist.includes(n), 'assist', n, n)).join('')}
+        <div class="grid2">${['Vagtlæge', 'Ambulance', 'SL/NK', 'Henvist egen læge'].map(n => seg(p.assist.includes(n), 'assist', n, n)).join('')}
+        <div style="grid-column:span 2">${seg(p.assist.includes('Andet'), 'assist', 'Andet', 'Andet').replace('class="seg', 'class="seg full')}</div>
         <div style="grid-column:span 2">${seg(p.assist.includes('Ingen'), 'assist', 'Ingen', 'Ingen').replace('class="seg', 'class="seg full')}</div></div></div>
         ${['Vagtlæge', 'Ambulance'].filter(n => p.assist.includes(n)).map(n => `<div><label class="lbl" for="rt-${n}">${n} – rekvireret klokken</label><div class="timerow"><input id="rt-${n}" class="field" type="time" data-f="rt.${n}" value="${esc(p.reqTimes[n])}" style="font-size:20px"><button class="clockbtn" aria-label="Vælg tidspunkt for ${n}" data-a="pickTime" data-arg="rt-${n}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button></div></div>`).join('')}
         ${p.assist.includes('Andet') ? field('aother', 'Andet', 'p.assistOther', p.assistOther, 'Beskriv andet') : ''}</div>`;
@@ -278,7 +283,7 @@
         ['Patient', t.jnr + ' · ' + typeText(t)],
         ['Triage · melding', t.triage + ' · ' + t.urgency],
         ['Skader', t.injuries.map(i => i.part + ' – ' + i.kind + '\n' + (i.desc || '–') + '\nÅrsag: ' + (i.cause || '–') + '\nSted: ' + locText(i)).join('\n\n')],
-        ['Udført behandling', t.treatment || '–'], ['Assistance', assistText(t) || 'Ingen'], ['Materialer', matText(t) || 'Ingen'], ['Navn og telefonnummer indsamlet', t.contact ? 'Ja' : 'Nej']
+        ['Udført behandling', (t.treatment || '–') + (hasSaar(t) ? '\nInfo om infektion: ' + (t.infection ? 'Ja' : 'Nej') : '')], ['Assistance', assistText(t) || 'Ingen'], ['Materialer', matText(t) || 'Ingen'], ['Navn og telefonnummer indsamlet', t.contact ? 'Ja' : 'Nej']
       ];
       return `<div class="col" style="gap:14px"><div class="card col" style="gap:14px">${rows.map(([k, v]) => `<div style="display:flex;flex-direction:column;gap:2px"><span class="k">${k}</span><span style="font-size:16px;white-space:pre-line">${esc(v)}</span></div>`).join('')}</div>
         <button class="btn" data-a="editDetail">Rediger behandling</button></div>`;
@@ -386,9 +391,11 @@
     return { deviceName: f.deviceName.trim(), rangeStart: a, rangeEnd: b, prefix, pin };
   }
 
+  const descErr = c => !c.desc.trim() ? 'Beskriv skaden' : !c.cause.trim() ? 'Beskriv årsagen til skaden' : '';
+
   // ---------- Handlinger ----------
   const A = {
-    back() { if (S.editMode) return A.cancelEdit(); if (S.screen === 'dash' || S.screen === 'pin') S.unlocked = false; set({ screen: BACK[S.screen] || 'home', err: '', showEntries: false }); },
+    back() { if (S.editMode) return A.cancelEdit(); if (S.screen === 'dash' || S.screen === 'pin') S.unlocked = false; set({ screen: (S.adding && S.screen === 'location') ? 'describe' : (BACK[S.screen] || 'home'), err: '', showEntries: false }); },
     go(s) { go(s); },
     pickTime(id) { const el = document.getElementById(id); if (!el) return; try { el.showPicker(); } catch (e) { el.focus(); } },
 
@@ -475,7 +482,9 @@
     },
     resume() {
       const p = S.p;
-      const s = !p.type ? 'patient' : !(p.triage && p.urgency) ? 'triage' : !p.injuries.length ? 'body' : 'materials';
+      const c = p.cur;
+      const s = !p.type ? 'patient' : !(p.triage && p.urgency) ? 'triage' : p.injuries.length ? 'materials'
+        : !c.kind ? 'body' : !(c.desc.trim() && c.cause.trim()) ? 'describe' : !p.treatment.trim() ? 'treatment' : !p.assist.length ? 'assist' : 'location';
       set({ screen: s, bodyOpen: !p.cur.partId, bodyView: p.cur.view || 'front' });
     },
     askDiscard() { set({ confirmDiscard: true }); },
@@ -490,7 +499,7 @@
     openFigure() { set({ bodyOpen: true, bodyView: S.p.cur.view || 'front' }); },
     assist(n) {
       const a = S.p.assist;
-      if (n === 'Ingen') { const on = !a.includes('Ingen'); S.p.assist = on ? ['Ingen'] : []; S.p.assistOther = ''; S.p.reqTimes = { 'Vagtlæge': '', 'Ambulance': '' }; render(); if (on) adv('materials'); return; }
+      if (n === 'Ingen') { const on = !a.includes('Ingen'); S.p.assist = on ? ['Ingen'] : []; S.p.assistOther = ''; S.p.reqTimes = { 'Vagtlæge': '', 'Ambulance': '' }; render(); if (on) adv('location'); return; }
       const b = a.filter(x => x !== 'Ingen'), on = b.includes(n); S.p.assist = on ? b.filter(x => x !== n) : b.concat([n]);
       if (S.p.reqTimes[n] !== undefined) S.p.reqTimes[n] = on ? '' : (S.p.reqTimes[n] || hhmm());
       render();
@@ -504,14 +513,17 @@
         case 'patient': if (!p.type) return fail('Vælg Gæst eller Frivillig'); return go('triage');
         case 'triage': if (!p.triage) return fail('Vælg triage'); if (!p.urgency) return fail('Vælg melding'); return go('body');
         case 'body': if (!cur.partId) return fail('Tryk på en legemsdel'); if (!cur.kind) return fail('Vælg skadetype'); return go('describe');
-        case 'describe': return go('location');
+        case 'describe': {
+          const e = descErr(cur); if (e) return fail(e);
+          return go(S.adding ? 'location' : 'treatment');
+        }
+        case 'treatment': if (!p.treatment.trim()) return fail('Beskriv den udførte behandling (skriv "Ingen" hvis ingen)'); return go('assist');
+        case 'assist': return go('location');
         case 'location': {
           if (!cur.loc) return fail('Vælg hvor skaden skete');
-          p.injuries.push(cur); p.cur = blankCur(); S.bodyOpen = true;
-          const toMat = S.adding; S.adding = false; return go(toMat ? 'materials' : 'treatment');
+          p.injuries.push(cur); p.cur = blankCur(); S.bodyOpen = true; S.adding = false;
+          return go('materials');
         }
-        case 'treatment': return go('assist');
-        case 'assist': return go('materials');
       }
     },
     addInjury() { set({ adding: true, bodyView: 'front', bodyOpen: true, screen: 'body', err: '' }); },
@@ -523,6 +535,7 @@
     confirmSend() {
       const p = S.p, u = user(), sh = openShift(S.activeId), now = nowIso();
       p.contact = S.contactChk; p.end = now; S.sendConfirm = false;
+      if (!hasSaar(p)) p.infection = false;
       const rec = Object.assign(clone(p), {
         id: Store.uuid(), userId: S.activeId, userName: u.name, shiftId: sh ? sh.id : null,
         device: S.settings.deviceName, appVersion: APP_VERSION,
@@ -546,6 +559,8 @@
         patient: () => !p.type ? 'Vælg Gæst eller Frivillig' : '',
         triage: () => !p.triage ? 'Vælg triage' : !p.urgency ? 'Vælg melding' : '',
         body: () => !cur.partId ? 'Tryk på en legemsdel' : !cur.kind ? 'Vælg skadetype' : '',
+        describe: () => descErr(cur),
+        treatment: () => !p.treatment.trim() ? 'Beskriv den udførte behandling (skriv "Ingen" hvis ingen)' : '',
         location: () => !cur.loc ? 'Vælg hvor skaden skete' : ''
       };
       const e = V2[S.screen] ? V2[S.screen]() : ''; if (e) return fail(e);

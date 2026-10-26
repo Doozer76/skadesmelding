@@ -29,6 +29,7 @@
         'Antal skader': t.injuries.length,
         'Skader (oversigt)': t.injuries.map(i => i.part + ' – ' + i.kind).join('; '),
         'Udført behandling': t.treatment || '',
+        'Info om infektion': (t.injuries || []).some(i => i.kind === 'Sår') ? yesNo(t.infection) : '',
         'Assistance': (t.assist || []).filter(a => a !== 'Ingen').join(', ') || 'Ingen',
         'Vagtlæge rekvireret kl.': (t.reqTimes && t.reqTimes['Vagtlæge']) || '',
         'Ambulance rekvireret kl.': (t.reqTimes && t.reqTimes['Ambulance']) || '',
