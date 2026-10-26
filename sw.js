@@ -1,7 +1,7 @@
 /* sw.js – gør appen tilgængelig uden netværk.
  * Hæv CACHE-versionen, hver gang en fil i appen ændres, så telefonerne henter den nye udgave.
  */
-const CACHE = 'skadesmelding-v1.0.1';
+const CACHE = 'skadesmelding-v1.0.2';
 const FILES = [
   './',
   './index.html',
@@ -23,7 +23,7 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -32,11 +32,11 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-// Netværk først (så opdateringer slår igennem), cache som reserve når der ikke er forbindelse.
+// Netværk først uden browserens HTTP-cache (så opdateringer slår igennem med det samme), cache som reserve når der ikke er forbindelse.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
         return res;

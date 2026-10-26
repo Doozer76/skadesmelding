@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.1-test';
+  const APP_VERSION = '1.0.2-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------

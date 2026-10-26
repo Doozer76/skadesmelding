@@ -26,7 +26,11 @@
 <script>
   // Offline-cache (virker kun når siden hentes over https eller localhost – ikke ved dobbeltklik på filen).
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // Når en ny version tager over, genindlæses siden én gang, så ændringer ses med det samme.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {}));
   }
 </script>
 </body>
