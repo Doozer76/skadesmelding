@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.4-test';
+  const APP_VERSION = '1.0.5-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -24,7 +24,7 @@
     screen: 'boot', settings: null, users: [], shifts: [], treatments: [], drafts: {},
     showNew: false, newName: '', activeId: null, p: blankP(), adding: false, err: '',
     bodyView: 'front', bodyOpen: true, showEntries: false, entriesFrom: null, editMode: null, histId: null, draftBackup: null,
-    toast: '', confirmId: null, confirmWipe: false, confirmDiscard: false, sendConfirm: false, contactChk: false,
+    toast: '', confirmId: null, confirmWipe: false, confirmDiscard: false, sendConfirm: false, contactChk: false, infChk: false, popErr: '',
     pin: '', unlocked: false, viewId: null, form: {}
   };
 
@@ -363,8 +363,10 @@
       ${S.confirmDiscard ? dialog('Kassér behandling?', 'Den igangværende behandling ' + esc(S.p.jnr) + ' slettes. Journalnummeret bliver ikke genbrugt.', 'cancelDiscard', 'confirmDiscard', 'Kassér', true) : ''}
       ${S.sendConfirm ? `<div class="overlay" style="justify-content:center;padding:20px"><div class="card col" style="gap:14px;background:#16181D">
         <span style="font-size:20px;font-weight:700">Afslut behandling</span>
+        ${hasSaar(S.p) && !S.p.infection ? `<label class="chk" style="align-items:flex-start;${S.popErr ? 'border-color:#E5534B' : ''}"><input type="checkbox" data-f="infChk" ${S.infChk ? 'checked' : ''} style="margin-top:2px"><span style="display:flex;flex-direction:column;gap:4px">Info om infektion *<span class="hint" style="font-weight:400">${INFECTION_TXT}</span></span></label>` : ''}
         <label class="chk"><input type="checkbox" data-f="contactChk" ${S.contactChk ? 'checked' : ''}>Navn og telefonnummer indsamlet</label>
         <div class="info">Er der brug for at kunne kontakte patienten efterfølgende, udfyldes <b>"Kontaktformular"</b>, og denne underskrives af patienten og overleveres til SL/NK. Patienten skal have et eksemplar (ikke en kopi) af formularen.</div>
+        ${S.popErr ? `<p class="err">${esc(S.popErr)}</p>` : ''}
         <div class="segs"><button class="btn btn-ghost" data-a="cancelSend">Annullér</button><button class="btn btn-primary" data-a="confirmSend">Send</button></div></div></div>` : ''}
       ${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`;
     const m = app.querySelector('main'); if (m) m.scrollTop = keepScroll;
@@ -529,12 +531,12 @@
     addInjury() { set({ adding: true, bodyView: 'front', bodyOpen: true, screen: 'body', err: '' }); },
     send() {
       if (!S.p.injuries.length) return fail('Registrér mindst én skade');
-      if (hasSaar(S.p) && !S.p.infection) return fail('Der er registreret et sår – sæt flueben i "Info om infektion" under Udført behandling (Se mine indtastninger)');
-      set({ sendConfirm: true, contactChk: S.p.contact, err: '' });
+      set({ sendConfirm: true, contactChk: S.p.contact, infChk: S.p.infection, popErr: '', err: '' });
     },
     cancelSend() { set({ sendConfirm: false }); },
     confirmSend() {
       const p = S.p, u = user(), sh = openShift(S.activeId), now = nowIso();
+      if (hasSaar(p) && !p.infection) { if (!S.infChk) return set({ popErr: 'Sæt flueben i "Info om infektion"' }); p.infection = true; }
       p.contact = S.contactChk; p.end = now; S.sendConfirm = false;
       if (!hasSaar(p)) p.infection = false;
       const rec = Object.assign(clone(p), {
@@ -605,6 +607,7 @@
     if (path === 'newName') { S.newName = v; return; }
     if (path === 'pin') { S.pin = v.replace(/\D/g, ''); return; }
     if (path === 'contactChk') { S.contactChk = v; return; }
+    if (path === 'infChk') { S.infChk = v; if (v && S.popErr) set({ popErr: '' }); return; }
     const [obj, key] = path.split('.');
     if (obj === 'form') { S.form[key] = key === 'pin' ? v.replace(/\D/g, '') : v; return; }
     if (obj === 'rt') { S.p.reqTimes[key] = v; saveDraft(); return; }
