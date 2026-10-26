@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.3-test';
+  const APP_VERSION = '1.0.4-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -243,15 +243,14 @@
     treatment() {
       const p = S.p;
       return `<div class="col">${area('treat', 'Udført behandling *', 'p.treatment', p.treatment, 'Beskriv den udførte behandling så godt som muligt. Skriv "Ingen" hvis du ikke har lavet en behandling', 'min-height:200px')}
-        ${hasSaar(p) ? `<label class="chk" style="align-items:flex-start"><input type="checkbox" data-f="p.infection" ${p.infection ? 'checked' : ''} style="margin-top:2px"><span style="display:flex;flex-direction:column;gap:4px">Info om infektion<span class="hint" style="font-weight:400">${INFECTION_TXT}</span></span></label>` : ''}</div>`;
+        ${hasSaar(p) ? `<label class="chk" style="align-items:flex-start"><input type="checkbox" data-f="p.infection" ${p.infection ? 'checked' : ''} style="margin-top:2px"><span style="display:flex;flex-direction:column;gap:4px">Info om infektion *<span class="hint" style="font-weight:400">${INFECTION_TXT}</span></span></label>` : ''}</div>`;
     },
 
     assist() {
       const p = S.p;
       return `<div class="col" style="gap:22px"><div><span class="lbl">Assistancebehov</span><p class="hint" style="margin-bottom:10px">Vælg alle der passer – eller Ingen.</p>
         <div class="grid2">${['Vagtlæge', 'Ambulance', 'SL/NK', 'Henvist egen læge'].map(n => seg(p.assist.includes(n), 'assist', n, n)).join('')}
-        <div style="grid-column:span 2">${seg(p.assist.includes('Andet'), 'assist', 'Andet', 'Andet').replace('class="seg', 'class="seg full')}</div>
-        <div style="grid-column:span 2">${seg(p.assist.includes('Ingen'), 'assist', 'Ingen', 'Ingen').replace('class="seg', 'class="seg full')}</div></div></div>
+        ${seg(p.assist.includes('Andet'), 'assist', 'Andet', 'Andet')}${seg(p.assist.includes('Ingen'), 'assist', 'Ingen', 'Ingen')}</div></div>
         ${['Vagtlæge', 'Ambulance'].filter(n => p.assist.includes(n)).map(n => `<div><label class="lbl" for="rt-${n}">${n} – rekvireret klokken</label><div class="timerow"><input id="rt-${n}" class="field" type="time" data-f="rt.${n}" value="${esc(p.reqTimes[n])}" style="font-size:20px"><button class="clockbtn" aria-label="Vælg tidspunkt for ${n}" data-a="pickTime" data-arg="rt-${n}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button></div></div>`).join('')}
         ${p.assist.includes('Andet') ? field('aother', 'Andet', 'p.assistOther', p.assistOther, 'Beskriv andet') : ''}</div>`;
     },
@@ -391,6 +390,7 @@
     return { deviceName: f.deviceName.trim(), rangeStart: a, rangeEnd: b, prefix, pin };
   }
 
+  const treatErr = p => !p.treatment.trim() ? 'Beskriv den udførte behandling (skriv "Ingen" hvis ingen)' : (hasSaar(p) && !p.infection) ? 'Sæt flueben i "Info om infektion"' : '';
   const descErr = c => !c.desc.trim() ? 'Beskriv skaden' : !c.cause.trim() ? 'Beskriv årsagen til skaden' : '';
 
   // ---------- Handlinger ----------
@@ -517,7 +517,7 @@
           const e = descErr(cur); if (e) return fail(e);
           return go(S.adding ? 'location' : 'treatment');
         }
-        case 'treatment': if (!p.treatment.trim()) return fail('Beskriv den udførte behandling (skriv "Ingen" hvis ingen)'); return go('assist');
+        case 'treatment': { const e = treatErr(p); if (e) return fail(e); return go('assist'); }
         case 'assist': return go('location');
         case 'location': {
           if (!cur.loc) return fail('Vælg hvor skaden skete');
@@ -529,6 +529,7 @@
     addInjury() { set({ adding: true, bodyView: 'front', bodyOpen: true, screen: 'body', err: '' }); },
     send() {
       if (!S.p.injuries.length) return fail('Registrér mindst én skade');
+      if (hasSaar(S.p) && !S.p.infection) return fail('Der er registreret et sår – sæt flueben i "Info om infektion" under Udført behandling (Se mine indtastninger)');
       set({ sendConfirm: true, contactChk: S.p.contact, err: '' });
     },
     cancelSend() { set({ sendConfirm: false }); },
@@ -560,7 +561,7 @@
         triage: () => !p.triage ? 'Vælg triage' : !p.urgency ? 'Vælg melding' : '',
         body: () => !cur.partId ? 'Tryk på en legemsdel' : !cur.kind ? 'Vælg skadetype' : '',
         describe: () => descErr(cur),
-        treatment: () => !p.treatment.trim() ? 'Beskriv den udførte behandling (skriv "Ingen" hvis ingen)' : '',
+        treatment: () => treatErr(p),
         location: () => !cur.loc ? 'Vælg hvor skaden skete' : ''
       };
       const e = V2[S.screen] ? V2[S.screen]() : ''; if (e) return fail(e);
