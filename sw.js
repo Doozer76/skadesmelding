@@ -1,7 +1,7 @@
 /* sw.js – gør appen tilgængelig uden netværk.
  * Hæv CACHE-versionen, hver gang en fil i appen ændres, så telefonerne henter den nye udgave.
  */
-const CACHE = 'skadesmelding-v1.0.6';
+const CACHE = 'skadesmelding-v1.0.7';
 const FILES = [
   './',
   './index.html',

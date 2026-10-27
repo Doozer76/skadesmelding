@@ -1,4 +1,4 @@
-/* export.js – laver en .xlsx med to faner: Behandlinger (én række pr. behandling, skaderne som kolonner) og Vagter.
+/* export.js – laver en .xlsx med to faner: Behandlinger (én række pr. skade)  og Vagter.
  * Kræver vendor/xlsx.mini.min.js (SheetJS). Ingen data forlader enheden – filen downloades lokalt.
  */
 (function () {
@@ -14,51 +14,52 @@
 
   function rows(treatments, shifts, device) {
     const sorted = treatments.slice().sort((a, b) => (a.start || '').localeCompare(b.start || ''));
-    const maxInj = Math.max(1, ...sorted.map(t => t.injuries.length));
-    const beh = sorted.map(t => {
-      const r = {
-        'Journalnr.': t.jnr,
-        'Dato': date(t.start),
-        'Start': time(t.start),
-        'Slut': time(t.end),
-        'Førstehjælper': t.userName || '',
-        'Patienttype': t.type,
-        'Rolle/funktion': t.type === 'Frivillig' ? (t.role || '') : '',
-        'Udgår': t.type === 'Frivillig' ? yesNo(t.out) : '',
-        'Triage': t.triage,
-        'Melding': t.urgency,
-        'Antal skader': t.injuries.length
-      };
-      for (let n = 0; n < maxInj; n++) {
-        const i = t.injuries[n] || {}, k = 'Skade ' + (n + 1) + ' – ';
-        r[k + 'legemsdel'] = i.part || '';
-        r[k + 'side'] = i.part ? (i.view === 'back' ? 'Bagside' : 'Forside') : '';
-        r[k + 'type'] = i.kind || '';
-        r[k + 'beskrivelse'] = i.desc || '';
-        r[k + 'årsag'] = i.cause || '';
-        r[k + 'område'] = loc(i);
-        r[k + 'rum'] = i.loc && i.loc !== 'Andet' ? (i.room || '') : '';
-      }
-      Object.assign(r, {
-        'Udført behandling': t.treatment || '',
-        'Info om infektion': (t.injuries || []).some(i => i.kind === 'Sår') ? yesNo(t.infection) : '',
-        'Assistance': (t.assist || []).filter(a => a !== 'Ingen').join(', ') || 'Ingen',
-        'Vagtlæge rekvireret kl.': (t.reqTimes && t.reqTimes['Vagtlæge']) || '',
-        'Ambulance rekvireret kl.': (t.reqTimes && t.reqTimes['Ambulance']) || '',
-        'Assistance andet': t.assistOther || ''
+    /* Én række pr. skade. Patientens fælles felter (behandling, assistance, materialer m.m.)
+     * står kun på rækken for skade 1, så summer i Excel ikke tælles dobbelt. */
+    const beh = [];
+    sorted.forEach(t => {
+      const inj = t.injuries.length ? t.injuries : [{}];
+      inj.forEach((i, n) => {
+        const first = n === 0;
+        const r = {
+          'Journalnr.': t.jnr,
+          'Skade nr.': (n + 1) + ' af ' + t.injuries.length,
+          'Dato': date(t.start),
+          'Start': time(t.start),
+          'Slut': time(t.end),
+          'Førstehjælper': t.userName || '',
+          'Patienttype': t.type,
+          'Rolle/funktion': t.type === 'Frivillig' ? (t.role || '') : '',
+          'Udgår': t.type === 'Frivillig' ? yesNo(t.out) : '',
+          'Triage': t.triage,
+          'Melding': t.urgency,
+          'Legemsdel': i.part || '',
+          'Side': i.part ? (i.view === 'back' ? 'Bagside' : 'Forside') : '',
+          'Skadetype': i.kind || '',
+          'Beskrivelse': i.desc || '',
+          'Årsag': i.cause || '',
+          'Område': loc(i),
+          'Rum': i.loc && i.loc !== 'Andet' ? (i.room || '') : '',
+          'Udført behandling': first ? (t.treatment || '') : '',
+          'Info om infektion': first && (t.injuries || []).some(x => x.kind === 'Sår') ? yesNo(t.infection) : '',
+          'Assistance': first ? ((t.assist || []).filter(a => a !== 'Ingen').join(', ') || 'Ingen') : '',
+          'Vagtlæge rekvireret kl.': first ? ((t.reqTimes && t.reqTimes['Vagtlæge']) || '') : '',
+          'Ambulance rekvireret kl.': first ? ((t.reqTimes && t.reqTimes['Ambulance']) || '') : '',
+          'Assistance andet': first ? (t.assistOther || '') : ''
+        };
+        MATS.forEach(m => { r['Mat. ' + m] = first ? ((t.mats && t.mats[m]) || 0) : ''; });
+        Object.assign(r, {
+          'Mat. andet (hvad)': first ? (t.matOther || '') : '',
+          'Navn/tlf. indsamlet': first ? yesNo(t.contact) : '',
+          'Enhed': device,
+          'Version': t.version || 1,
+          'Status': t.status,
+          'Oprettet': stamp(t.createdAt),
+          'Sidst ændret': stamp(t.updatedAt),
+          'Id': t.id
+        });
+        beh.push(r);
       });
-      MATS.forEach(m => { r['Mat. ' + m] = (t.mats && t.mats[m]) || 0; });
-      Object.assign(r, {
-        'Mat. andet (hvad)': t.matOther || '',
-        'Navn/tlf. indsamlet': yesNo(t.contact),
-        'Enhed': device,
-        'Version': t.version || 1,
-        'Status': t.status,
-        'Oprettet': stamp(t.createdAt),
-        'Sidst ændret': stamp(t.updatedAt),
-        'Id': t.id
-      });
-      return r;
     });
 
     const vagter = shifts.slice().sort((a, b) => (a.start || '').localeCompare(b.start || '')).map(s => ({

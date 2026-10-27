@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.6-test';
+  const APP_VERSION = '1.0.7-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -25,7 +25,8 @@
     showNew: false, newName: '', activeId: null, p: blankP(), adding: false, err: '',
     bodyView: 'front', bodyOpen: true, showEntries: false, entriesFrom: null, editMode: null, histId: null, draftBackup: null,
     toast: '', confirmId: null, confirmWipe: false, confirmDiscard: false, sendConfirm: false, contactChk: false, infChk: false, popErr: '',
-    pin: '', unlocked: false, viewId: null, form: {}
+    pin: '', unlocked: false, viewId: null, form: {},
+    dash: { mode: 'all', from: '', to: '', user: '', bar: '' }
   };
 
   const ORDER = ['patient', 'triage', 'body', 'describe', 'treatment', 'assist', 'location', 'materials'];
@@ -57,6 +58,20 @@
   const matText = p => Object.keys(p.mats).filter(k => p.mats[k] > 0).map(k => (k === 'Andet' && p.matOther ? p.matOther : k) + ' ×' + p.mats[k]).join(', ');
   const assistText = p => p.assist.map(a => a === 'Andet' && p.assistOther ? 'Andet: ' + p.assistOther : (p.reqTimes && p.reqTimes[a] ? a + ' (rekv. ' + p.reqTimes[a] + ')' : a)).join(', ');
   const hasSaar = p => p.injuries.some(i => i.kind === 'Sår') || (p.cur && p.cur.kind === 'Sår');
+  // ---------- Dashboard-filtre ----------
+  const ymd = iso => { if (!iso) return ''; const d = new Date(iso); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const minusYear = v => v ? (parseInt(v.slice(0, 4), 10) - 1) + v.slice(4) : '';
+  const dmy = v => v ? v.slice(8, 10) + '.' + v.slice(5, 7) + '.' + v.slice(0, 4) : '';
+  /* Behandlinger efter valgt førstehjælper og periode. lastYear = samme periode året før. */
+  function dashData(lastYear) {
+    const D = S.dash;
+    let a = S.treatments.filter(t => !D.user || t.userId === D.user);
+    if (D.mode !== 'all') {
+      const from = lastYear ? minusYear(D.from) : D.from, to = lastYear ? minusYear(D.to) : D.to;
+      a = a.filter(t => { const d = ymd(t.start); return (!from || d >= from) && (!to || d <= to); });
+    }
+    return a;
+  }
   const INFECTION_TXT = 'Er oplyst om opmærksomhed på tegn på infektion (hævelse, rødme, varme, smerter)';
   const typeText = p => p.type === 'Frivillig' ? 'Frivillig' + (p.role ? ' (' + p.role + ')' : '') + (p.out ? ' · Udgår' : '') : (p.type || '–');
   const timeText = t => tm(t.start) + (t.end ? '–' + tm(t.end) : '');
@@ -295,17 +310,43 @@
     },
 
     dash() {
-      const a = S.treatments, c = f => a.filter(f).length;
-      const tile = (n, k, color = '') => `<div class="tile"><span class="n" style="${color ? 'color:' + color : ''}">${n}</span><span class="k">${k}</span></div>`;
-      const kinds = KINDS.map(k => [k, a.reduce((s, t) => s + t.injuries.filter(i => i.kind === k).length, 0)]).filter(x => x[1] > 0);
-      return `<div class="col" style="gap:14px"><p class="hint">Anonymiseret · alle førstehjælpere · ${esc(S.settings.deviceName)}</p>
-        <div class="grid2"><div class="tile" style="grid-column:span 2"><span class="n">${a.length}</span><span class="k">Behandlinger i alt</span></div>
-        ${tile(c(t => t.triage === 'Rød'), 'Triage rød', '#FF8A82')}${tile(c(t => t.triage === 'Gul'), 'Triage gul', '#E8C547')}
-        ${tile(c(t => t.triage === 'Grøn'), 'Triage grøn', '#6FD08C')}${tile(c(t => t.urgency === 'Akut'), 'Akut')}
-        ${tile(c(t => t.urgency === 'Haste'), 'Haste')}${tile(c(t => t.urgency === 'Normal'), 'Normal')}</div>
-        ${kinds.length ? `<div class="card col" style="gap:8px"><span class="k">Skadetyper</span>${kinds.map(([k, n]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${n}</b></div>`).join('')}</div>` : ''}
-        <button class="btn btn-primary" data-a="export">Eksportér til Excel (.xlsx)</button>
-        <p class="hint">Eksporten indeholder alle behandlinger (med skader) og vagter på denne enhed. Filen gemmes lokalt i Overførsler/Filer.</p>
+      const D = S.dash, a = dashData(false), cmp = D.mode === 'cmp', b = cmp ? dashData(true) : null;
+      const c = (arr, f) => arr.filter(f).length;
+      const tile = (f, k, color = '', span = '') => `<div class="tile" style="${span}"><span class="n" style="${color ? 'color:' + color : ''}">${c(a, f)}</span><span class="k">${k}</span>${cmp ? `<span class="hint" style="font-size:13px">Sidste år: <b>${c(b, f)}</b></span>` : ''}</div>`;
+      const kinds = KINDS.map(k => [k, a.reduce((s, t) => s + t.injuries.filter(i => i.kind === k).length, 0), cmp ? b.reduce((s, t) => s + t.injuries.filter(i => i.kind === k).length, 0) : 0]).filter(x => x[1] > 0 || x[2] > 0);
+      // Søjlediagram: de seneste 7 datoer med registreringer
+      const days = [...new Set(a.map(t => ymd(t.start)))].sort().slice(-7);
+      const data = days.map(d => { const ts = a.filter(t => ymd(t.start) === d); return { d, g: c(ts, t => t.type === 'Gæst'), f: c(ts, t => t.type === 'Frivillig') }; });
+      const max = Math.max(1, ...data.map(x => Math.max(x.g, x.f)));
+      const bar = (d, k, n, col) => { const key = d + k, on = D.bar === key;
+        return `<button data-a="dashBar" data-arg="${key}" aria-label="${k === 'g' ? 'Gæster' : 'Frivillige'} ${dmy(d)}: ${n}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;background:none;border:0;padding:0;cursor:pointer;color:#F1F0EC;font:inherit">
+          <span style="font-size:13px;font-weight:700;min-height:16px">${on ? n : ''}</span>
+          <span style="width:100%;max-width:18px;height:${Math.max(2, n / max * 120)}px;background:${col};border-radius:4px 4px 0 0;opacity:${D.bar && !on ? .5 : 1};outline:${on ? '2px solid #F1F0EC' : 'none'}"></span></button>`; };
+      const chart = data.length ? `<div class="card col" style="gap:10px"><span class="k">Behandlinger pr. dato (seneste ${data.length} datoer med registreringer)</span>
+        <div style="display:flex;gap:6px;height:150px;align-items:flex-end;border-bottom:1px solid #343943">
+          ${data.map(x => `<div style="flex:1;display:flex;gap:3px;height:100%;align-items:flex-end">${bar(x.d, 'g', x.g, '#F2A93B')}${bar(x.d, 'f', x.f, '#5B9BD5')}</div>`).join('')}</div>
+        <div style="display:flex;gap:6px">${data.map(x => `<span style="flex:1;text-align:center;font-size:12px;color:#A3A8B3">${x.d.slice(8, 10)}.${x.d.slice(5, 7)}</span>`).join('')}</div>
+        <div style="display:flex;gap:16px;font-size:13px;color:#D9DAD6"><span><span style="display:inline-block;width:10px;height:10px;background:#F2A93B;border-radius:2px"></span> Gæst</span><span><span style="display:inline-block;width:10px;height:10px;background:#5B9BD5;border-radius:2px"></span> Frivillig</span><span style="color:#A3A8B3">Tryk på en søjle for tal</span></div></div>`
+        : '';
+      const names = S.users.slice().sort((x, y) => x.name.localeCompare(y.name, 'da'));
+      return `<div class="col" style="gap:14px">
+        <div class="card col" style="gap:12px">
+          <div><span class="lbl">Periode</span><div class="segs">${seg(D.mode === 'all', 'dashMode', 'all', 'Hele perioden')}${seg(D.mode === 'range', 'dashMode', 'range', 'Periode')}${seg(D.mode === 'cmp', 'dashMode', 'cmp', 'Sammenlign')}</div></div>
+          ${D.mode !== 'all' ? `<div class="two"><div><label class="lbl" for="d-from">Fra</label><input id="d-from" class="field" type="date" data-f="dash.from" value="${esc(D.from)}"></div><div><label class="lbl" for="d-to">Til</label><input id="d-to" class="field" type="date" data-f="dash.to" value="${esc(D.to)}"></div></div>` : ''}
+          ${cmp ? `<p class="hint">Sammenlignes med ${D.from || D.to ? (dmy(minusYear(D.from)) || 'start') + ' – ' + (dmy(minusYear(D.to)) || 'nu') : 'samme datoer sidste år'}.</p>` : ''}
+          <div><label class="lbl" for="d-user">Førstehjælper</label><select id="d-user" class="field" data-f="dash.user"><option value="">Alle førstehjælpere</option>${names.map(u => `<option value="${esc(u.id)}" ${D.user === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></div>
+        </div>
+        <div class="grid2">
+          ${tile(() => true, 'Behandlinger i alt', '', 'grid-column:span 2')}
+          ${tile(t => t.type === 'Gæst', 'Gæster')}${tile(t => t.type === 'Frivillig', 'Frivillige')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+          ${tile(t => t.triage === 'Grøn', 'Triage grøn', '#6FD08C')}${tile(t => t.triage === 'Gul', 'Triage gul', '#E8C547')}${tile(t => t.triage === 'Rød', 'Triage rød', '#FF8A82')}
+        </div>
+        ${chart}
+        ${kinds.length ? `<div class="card col" style="gap:8px"><span class="k">Skadetyper</span>${kinds.map(([k, n, m]) => `<div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${n}${cmp ? ` <span style="color:#A3A8B3;font-weight:400">(${m})</span>` : ''}</b></div>`).join('')}</div>` : ''}
+        <button class="btn btn-primary" data-a="export">Eksportér ${a.length} behandling(er) til Excel</button>
+        <p class="hint">Eksporten følger den valgte periode og førstehjælper. Én række pr. skade. Filen gemmes lokalt i Overførsler/Filer.</p>
         <button class="btn" data-a="openSettings">Indstillinger</button>
         <button class="btn btn-danger" data-a="askWipe">Slet alle testdata</button></div>`;
     },
@@ -446,8 +487,11 @@
       if (S.pin !== S.settings.pin) { S.pin = ''; return flash('Forkert PIN-kode'); }
       set({ screen: 'dash', pin: '', unlocked: true });
     },
+    dashMode(m) { S.dash.mode = m; S.dash.bar = ''; render(); },
+    dashBar(k) { S.dash.bar = S.dash.bar === k ? '' : k; render(); },
     export() {
-      try { const r = Export.toXlsx(S.treatments, S.shifts, S.settings.deviceName); flash(r.count + ' behandling(er) eksporteret til ' + r.name); }
+      const a = dashData(false); if (!a.length) return flash('Ingen behandlinger i den valgte periode');
+      try { const r = Export.toXlsx(a, S.shifts.filter(x => !S.dash.user || x.userId === S.dash.user), S.settings.deviceName); flash(r.count + ' behandling(er) eksporteret til ' + r.name); }
       catch (e) { flash('Eksport fejlede: ' + e.message); }
     },
     openSettings() {
@@ -609,6 +653,7 @@
     if (path === 'contactChk') { S.contactChk = v; return; }
     if (path === 'infChk') { S.infChk = v; if (v && S.popErr) set({ popErr: '' }); return; }
     const [obj, key] = path.split('.');
+    if (obj === 'dash') { S.dash[key] = v; S.dash.bar = ''; return; }
     if (obj === 'form') { S.form[key] = key === 'pin' ? v.replace(/\D/g, '') : v; return; }
     if (obj === 'rt') { S.p.reqTimes[key] = v; saveDraft(); return; }
     (obj === 'p' ? S.p : S.p.cur)[key] = v;
@@ -618,6 +663,7 @@
   app.addEventListener('change', e => {
     const t = e.target, f = t.dataset && t.dataset.f; if (!f) return;
     if (t.type === 'checkbox') { setField(f, t.checked); return; }
+    if (f.startsWith('dash.')) { setField(f, t.value); return render(); }
     if (t.tagName !== 'SELECT') return;
     setField(f, t.value);
     if (t.dataset.change === 'loc') { S.p.cur.room = ''; S.p.cur.locOther = ''; }
