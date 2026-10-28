@@ -2,12 +2,16 @@
 @font-face{font-family:'Atkinson Hyperlegible';font-style:normal;font-weight:700;font-display:swap;src:url(../fonts/atkinson-hyperlegible-latin-700-normal.woff2) format('woff2')}
 :root{color-scheme:dark}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:#0B0C0F}
+html,body{margin:0;height:100%;background:#0B0C0F;overflow:hidden;overscroll-behavior:none}
 body{display:flex;justify-content:center;-webkit-tap-highlight-color:transparent}
 #app{font-family:'Atkinson Hyperlegible',system-ui,sans-serif;color:#F1F0EC;width:100%;max-width:480px;height:100dvh;display:flex;flex-direction:column;background:#121418;position:relative;overflow:hidden}
 header{display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid #23262D;background:#16181D;min-height:68px}
 main{flex:1;overflow-y:auto;padding:20px;-webkit-overflow-scrolling:touch}
-footer{padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid #23262D;background:#16181D;display:flex;flex-direction:column;gap:8px}
+footer{padding:12px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid #23262D;background:#16181D;display:flex;flex-direction:column;gap:8px;box-shadow:0 -10px 24px rgba(0,0,0,.35);position:relative;z-index:2}
+footer:not(:has(*)){display:none}
+#app.kb footer{padding-bottom:10px}
+#app.kb footer .linkbtn{display:none}
+#app.kb .banner{display:none}
 .col{display:flex;flex-direction:column;gap:18px}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:6px 16px;border-radius:12px;border:1px solid #343943;background:#1D2026;color:#F1F0EC;font:inherit;font-size:17px;font-weight:700;cursor:pointer;width:100%;line-height:1.2;text-align:center}
 .btn-primary{background:#F2A93B;border-color:#F2A93B;color:#15120C}
@@ -60,3 +64,13 @@ textarea.field{min-height:150px;resize:vertical;line-height:1.45}
 .banner{background:#2A2110;color:#FFC56B;font-size:12px;font-weight:700;text-align:center;padding:4px 8px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .boot{margin:auto;color:#A3A8B3;font-size:15px;padding:40px 20px;text-align:center}
+
+/* Overgange mellem sider i behandlingsflowet */
+@keyframes inFwd{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes inBack{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+main.enter-fwd{animation:inFwd .32s cubic-bezier(.2,.7,.2,1) both}
+main.enter-back{animation:inBack .32s cubic-bezier(.2,.7,.2,1) both}
+main.leave{transition:opacity .2s ease,transform .2s ease;opacity:0;transform:translateX(-20px)}
+.seg,.tri{transition:background-color .18s,border-color .18s,opacity .18s,transform .12s}
+.seg:active,.tri:active{transform:scale(.97)}
+@media (prefers-reduced-motion:reduce){main.enter-fwd,main.enter-back{animation:none}main.leave{transition:none}}

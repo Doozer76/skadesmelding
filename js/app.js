@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.8-test';
+  const APP_VERSION = '1.0.9-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -121,10 +121,32 @@
   // ---------- Render-hjælpere ----------
   let toastT, advT, ENTRIES = [];
   function set(patch) { Object.assign(S, patch); render(); }
-  function go(screen) { set({ screen, showEntries: false, err: '' }); }
+  function go(screen) { clearTimeout(advT); S.advancing = false; set({ screen, showEntries: false, err: '' }); }
   function flash(msg) { set({ toast: msg }); clearTimeout(toastT); toastT = setTimeout(() => set({ toast: '' }), 3200); }
   function fail(msg) { set({ err: msg }); }
-  function adv(screen) { if (S.editMode) return; clearTimeout(advT); advT = setTimeout(() => go(screen), 300); }
+  /* Automatisk videre: valget vises et øjeblik, siden glider ud, og næste side glider ind. */
+  const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function adv(screen) {
+    if (S.editMode) return;
+    clearTimeout(advT); S.advancing = true; render();
+    advT = setTimeout(() => {
+      const m = app.querySelector('main'); if (m && !REDUCED) m.classList.add('leave');
+      advT = setTimeout(() => go(screen), REDUCED ? 0 : 200);
+    }, 450);
+  }
+  /* Næste-knappen vises kun, hvor siden ikke selv går videre – eller når siden allerede er udfyldt (fx efter Tilbage). */
+  function showNext() {
+    if (S.advancing) return false;
+    const p = S.p;
+    switch (S.screen) {
+      case 'patient': return !!p.type;
+      case 'triage': return !!(p.triage && p.urgency);
+      case 'body': return !!p.cur.kind;
+      case 'assist': return p.assist.length > 0;
+      default: return true;
+    }
+  }
+  let lastScreen = null;
 
   function buildEntries() {
     const p = S.p, cur = p.cur, list = [];
@@ -413,7 +435,7 @@
           ? `<div class="segs"><button class="btn btn-ghost" style="flex:1" data-a="cancelEdit">Annullér</button><button class="btn btn-primary" style="flex:1.5" data-a="saveEdit">Gem</button></div>`
           : S.screen === 'materials'
             ? `<div class="segs"><button class="btn" style="flex:1" data-a="addInjury">+ Tilføj skade</button><button class="btn btn-primary" style="flex:1.5" data-a="send">Afslut behandling og send</button></div>`
-            : `<button class="btn btn-primary" data-a="next">Næste</button>`}
+            : (showNext() ? `<button class="btn btn-primary" data-a="next">Næste</button>` : '')}
         ${S.editMode ? '' : '<button class="linkbtn" data-a="openEntries">Se mine indtastninger</button>'}</footer>` : ''}
       ${S.showEntries ? `<div class="overlay"><div class="sheet">
         <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:19px;font-weight:700">${S.histId ? 'Rediger behandling' : 'Mine indtastninger'}</span>
@@ -432,6 +454,12 @@
         <div class="segs"><button class="btn btn-ghost" data-a="cancelSend">Annullér</button><button class="btn btn-primary" data-a="confirmSend">Send</button></div></div></div>` : ''}
       ${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`;
     const m = app.querySelector('main'); if (m) m.scrollTop = keepScroll;
+    // Overgang mellem sider i behandlingsflowet (frem = fra højre, tilbage = fra venstre).
+    if (m && lastScreen && lastScreen !== S.screen && isFlow && !REDUCED) {
+      const from = ORDER.indexOf(lastScreen), to = ORDER.indexOf(S.screen);
+      m.classList.add(from > to ? 'enter-back' : 'enter-fwd');
+    }
+    lastScreen = S.screen;
     if (focusedId) { const el = document.getElementById(focusedId); if (el && el.tagName !== 'BUTTON') el.focus(); }
     saveDraft();
   }
@@ -459,7 +487,7 @@
 
   // ---------- Handlinger ----------
   const A = {
-    back() { if (S.editMode) return A.cancelEdit(); if (S.screen === 'dash' || S.screen === 'pin') S.unlocked = false; set({ screen: (S.adding && S.screen === 'location') ? 'describe' : (BACK[S.screen] || 'home'), err: '', showEntries: false }); },
+    back() { clearTimeout(advT); S.advancing = false; if (S.editMode) return A.cancelEdit(); if (S.screen === 'dash' || S.screen === 'pin') S.unlocked = false; set({ screen: (S.adding && S.screen === 'location') ? 'describe' : (BACK[S.screen] || 'home'), err: '', showEntries: false }); },
     go(s) { go(s); },
     pickTime(id) { const el = document.getElementById(id); if (!el) return; try { el.showPicker(); } catch (e) { el.focus(); } },
 
@@ -675,6 +703,21 @@
     const map = { newname: 'createUser', pin: 'unlock' };
     if (map[e.target.id]) { e.preventDefault(); A[map[e.target.id]](); }
   });
+  // Tastatur: hold appen inden for det synlige område, så footeren med Næste ligger lige over tastaturet.
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const fit = () => {
+      app.style.height = vv.height + 'px';
+      app.style.transform = vv.offsetTop ? 'translateY(' + vv.offsetTop + 'px)' : '';
+      app.classList.toggle('kb', vv.height < window.innerHeight * 0.8 || (window.screen && vv.height < screen.height * 0.6));
+    };
+    vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+  }
+  app.addEventListener('focusin', e => {
+    if (!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    setTimeout(() => { if (document.activeElement === e.target) e.target.scrollIntoView({ block: 'center', behavior: REDUCED ? 'auto' : 'smooth' }); }, 300);
+  });
+
   // Gem kladden, hvis appen lukkes eller skifter i baggrunden.
   const flushDraft = () => { if (S.settings) { clearTimeout(draftT); Store.setMeta('drafts', S.drafts).catch(() => {}); } };
   document.addEventListener('visibilitychange', () => {
