@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.7-test';
+  const APP_VERSION = '1.0.8-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -24,7 +24,7 @@
     screen: 'boot', settings: null, users: [], shifts: [], treatments: [], drafts: {},
     showNew: false, newName: '', activeId: null, p: blankP(), adding: false, err: '',
     bodyView: 'front', bodyOpen: true, showEntries: false, entriesFrom: null, editMode: null, histId: null, draftBackup: null,
-    toast: '', confirmId: null, confirmWipe: false, confirmDiscard: false, sendConfirm: false, contactChk: false, infChk: false, popErr: '',
+    toast: '', confirmWipe: false, confirmDiscard: false, sendConfirm: false, contactChk: false, infChk: false, popErr: '',
     pin: '', unlocked: false, viewId: null, form: {},
     dash: { mode: 'all', from: '', to: '', user: '', bar: '' }
   };
@@ -77,6 +77,27 @@
   const timeText = t => tm(t.start) + (t.end ? '–' + tm(t.end) : '');
   const user = () => S.users.find(u => u.id === S.activeId) || { name: '' };
   const openShift = uid => S.shifts.find(s => s.userId === uid && !s.end);
+  const lastShift = uid => S.shifts.filter(s => s.userId === uid).sort((a, b) => (b.start || '').localeCompare(a.start || ''))[0];
+  /* Vagter styres automatisk: starter ved første behandling og slutter ved sidste.
+   * Er der gået SHIFT_GAP siden sidste behandling, lukkes vagten med sluttid = sidste behandlings sluttid. */
+  const SHIFT_GAP = 8 * 3600 * 1000;
+  const shiftLast = sh => S.treatments.filter(t => t.shiftId === sh.id).reduce((m, t) => (t.end && t.end > m ? t.end : m), sh.start);
+  function closeStaleShifts() {
+    const now = Date.now();
+    S.shifts.forEach(sh => {
+      if (sh.end || S.drafts[sh.userId]) return; // en igangværende behandling holder vagten åben
+      const last = shiftLast(sh);
+      if (now - new Date(last).getTime() >= SHIFT_GAP) { sh.end = last; Store.put('shifts', sh).catch(saveErr); }
+    });
+  }
+  function ensureShift(uid) {
+    closeStaleShifts();
+    const cur = openShift(uid); if (cur) return cur;
+    const u = S.users.find(x => x.id === uid) || { name: '' };
+    const sh = { id: Store.uuid(), userId: uid, userName: u.name, start: nowIso(), end: null };
+    S.shifts.push(sh); Store.put('shifts', sh).catch(saveErr);
+    return sh;
+  }
   const fmtJnr = n => S.settings.prefix + '-' + String(n).padStart(3, '0');
   const left = () => S.settings.rangeEnd - S.settings.next + 1;
 
@@ -159,14 +180,13 @@
 
     home() {
       return `<div class="col">
-        <div style="display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:26px">Hvem er på vagt?</h1><p class="hint">Start din vagt, og tryk så på dit navn for at registrere behandlinger.</p></div>
+        <div style="display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:26px">Hvem er på vagt?</h1><p class="hint">Tryk på dit navn for at registrere behandlinger. Vagten starter automatisk ved første behandling og slutter ved den sidste.</p></div>
         ${S.users.map(u => {
           const sh = openShift(u.id), dr = S.drafts[u.id];
           return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
           <button class="profile" data-a="openUser" data-arg="${u.id}"><span class="avatar">${esc(u.name.charAt(0).toUpperCase())}</span>
             <span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font-size:19px;font-weight:700">${esc(u.name)}</span>
             <span style="font-size:14px;color:${sh ? '#6FD08C' : '#A3A8B3'}">${sh ? 'På vagt siden ' + tm(sh.start) : 'Ikke på vagt'}${dr ? ' · behandling i gang' : ''}</span></span>${chevR}</button>
-          <button class="btn ${sh ? 'btn-danger' : 'btn-primary'}" data-a="toggleShift" data-arg="${u.id}">${sh ? 'Afslut vagt' : 'Start vagt'}</button>
         </div>`;
         }).join('')}
         ${S.showNew ? `<div class="card" style="display:flex;flex-direction:column;gap:12px">
@@ -188,7 +208,9 @@
       const mine = sh ? S.treatments.filter(t => t.shiftId === sh.id).length : 0;
       const draft = S.p.jnr;
       return `<div class="col">
-        <div class="card" style="display:flex;flex-direction:column;gap:4px"><span style="font-size:14px;color:#A3A8B3">På vagt siden ${esc(sh ? tm(sh.start) : '–')}</span><span style="font-size:17px;font-weight:700">${mine} ${mine === 1 ? 'behandling' : 'behandlinger'} på denne vagt</span></div>
+        <div class="card" style="display:flex;flex-direction:column;gap:4px">${sh
+          ? `<span style="font-size:14px;color:#A3A8B3">På vagt siden ${esc(tm(sh.start))}</span><span style="font-size:17px;font-weight:700">${mine} ${mine === 1 ? 'behandling' : 'behandlinger'} på denne vagt</span>`
+          : `<span style="font-size:14px;color:#A3A8B3">Ikke på vagt</span><span style="font-size:17px;font-weight:700">Vagten starter ved første behandling</span>`}</div>
         ${draft
           ? `<button class="btn btn-primary big" data-a="resume">Fortsæt behandling ${esc(draft)}</button>
              <button class="linkbtn" style="align-self:center" data-a="askDiscard">Kassér igangværende behandling</button>`
@@ -281,10 +303,10 @@
     },
 
     history() {
-      const sh = openShift(S.activeId);
+      const sh = openShift(S.activeId) || lastShift(S.activeId);
       const mine = sh ? S.treatments.filter(t => t.shiftId === sh.id).sort((a, b) => b.start.localeCompare(a.start)) : [];
       if (!mine.length) return '<p class="hint">Ingen behandlinger på denne vagt endnu.</p>';
-      return `<div class="col" style="gap:10px">${mine.map(t => `<button class="row" data-a="openT" data-arg="${t.id}">
+      return `<div class="col" style="gap:10px">${sh.end ? `<p class="hint">Seneste vagt ${esc(dt(sh.start))}–${esc(tm(sh.end))}</p>` : ''}${mine.map(t => `<button class="row" data-a="openT" data-arg="${t.id}">
         <span style="display:flex;align-items:center;gap:12px;min-width:0"><span style="width:14px;height:14px;border-radius:50%;background:${TRI[t.triage] || '#4A505B'};flex:none" aria-hidden="true"></span>
         <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:17px;font-weight:700">${esc(t.jnr)}</span><span style="font-size:14px;color:#A3A8B3">${timeText(t)} · ${esc(t.injuries.map(i => i.part + ' – ' + i.kind).join(', '))}</span></span></span>
         <span style="font-size:13px;font-weight:700;color:${t.status === 'sendt' ? '#6FD08C' : '#9DB8DE'};flex:none">${STATUS_TEXT[t.status] || t.status}</span></button>`).join('')}</div>`;
@@ -399,7 +421,6 @@
         <p class="hint">Tryk på et punkt for at rette det.</p>
         ${ENTRIES.map((e, i) => `<button class="row" data-a="entry" data-arg="${i}"><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="k">${esc(e.k)}</span><span style="font-size:16px">${esc(e.v)}</span></span>${pen}</button>`).join('')}
       </div></div>` : ''}
-      ${S.confirmId ? dialog('Afslut vagt?', 'Sluttidspunktet logges. I testversionen bliver behandlingerne liggende på enheden, så de kan eksporteres fra Dashboard.', 'cancelEnd', 'confirmEnd', 'Afslut vagt', true) : ''}
       ${S.confirmWipe ? dialog('Slet alle testdata?', 'Alle førstehjælpere, vagter og behandlinger på denne enhed slettes, og journalnumrene starter forfra. Indstillingerne bevares. Kan ikke fortrydes.', 'cancelWipe', 'confirmWipe', 'Slet alt', true) : ''}
       ${S.confirmDiscard ? dialog('Kassér behandling?', 'Den igangværende behandling ' + esc(S.p.jnr) + ' slettes. Journalnummeret bliver ikke genbrugt.', 'cancelDiscard', 'confirmDiscard', 'Kassér', true) : ''}
       ${S.sendConfirm ? `<div class="overlay" style="justify-content:center;padding:20px"><div class="card col" style="gap:14px;background:#16181D">
@@ -457,31 +478,9 @@
       Store.put('users', u).then(() => { S.users.push(u); set({ showNew: false, newName: '' }); }).catch(saveErr);
     },
     openUser(id) {
-      if (!openShift(id)) return flash('Tryk "Start vagt" først');
+      closeStaleShifts();
       set({ activeId: id, p: S.drafts[id] ? S.drafts[id] : blankP(), adding: false, bodyOpen: true, bodyView: 'front', screen: 'hub' });
     },
-    toggleShift(id) {
-      const u = S.users.find(x => x.id === id), sh = openShift(id);
-      if (!sh) {
-        const s = { id: Store.uuid(), userId: id, userName: u.name, start: nowIso(), end: null };
-        return Store.put('shifts', s).then(() => { S.shifts.push(s); flash('Vagt startet kl. ' + tm(s.start) + ' – logget'); }).catch(saveErr);
-      }
-      if (S.drafts[id]) return flash('Afslut eller kassér den igangværende behandling (' + S.drafts[id].jnr + ') først.');
-      const q = Sync.pending(S.treatments.filter(t => t.userId === id));
-      if (q) return flash(q + ' behandling(er) venter på at blive sendt. Find forbindelse før du afslutter.');
-      set({ confirmId: id });
-    },
-    cancelEnd() { set({ confirmId: null }); },
-    confirmEnd() {
-      const sh = openShift(S.confirmId); S.confirmId = null;
-      if (!sh) return render();
-      sh.end = nowIso();
-      Store.put('shifts', sh).then(() => {
-        Object.assign(S, { activeId: null, p: blankP(), screen: 'home' });
-        flash('Vagt afsluttet kl. ' + tm(sh.end) + ' – logget');
-      }).catch(saveErr);
-    },
-
     openPin() { set({ screen: 'pin', pin: '' }); setTimeout(() => { const el = document.getElementById('pin'); if (el) el.focus(); }, 0); },
     unlock() {
       if (S.pin !== S.settings.pin) { S.pin = ''; return flash('Forkert PIN-kode'); }
@@ -523,6 +522,7 @@
     startTreatment() {
       const j = takeJnr();
       if (!j) return flash('Nummerserien er brugt op. Ret den under Dashboard → Indstillinger.');
+      ensureShift(S.activeId);
       const np = blankP(); np.jnr = j; np.start = nowIso();
       set({ p: np, adding: false, bodyView: 'front', bodyOpen: true, screen: 'patient', err: '' });
     },
@@ -579,7 +579,7 @@
     },
     cancelSend() { set({ sendConfirm: false }); },
     confirmSend() {
-      const p = S.p, u = user(), sh = openShift(S.activeId), now = nowIso();
+      const p = S.p, u = user(), sh = openShift(S.activeId) || ensureShift(S.activeId), now = nowIso();
       if (hasSaar(p) && !p.infection) { if (!S.infChk) return set({ popErr: 'Sæt flueben i "Info om infektion"' }); p.infection = true; }
       p.contact = S.contactChk; p.end = now; S.sendConfirm = false;
       if (!hasSaar(p)) p.infection = false;
@@ -677,7 +677,11 @@
   });
   // Gem kladden, hvis appen lukkes eller skifter i baggrunden.
   const flushDraft = () => { if (S.settings) { clearTimeout(draftT); Store.setMeta('drafts', S.drafts).catch(() => {}); } };
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDraft(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') return flushDraft();
+    if (S.settings) { closeStaleShifts(); if (['home', 'hub'].includes(S.screen)) render(); }
+  });
+  setInterval(() => { if (S.settings) { closeStaleShifts(); if (['home', 'hub'].includes(S.screen)) render(); } }, 5 * 60 * 1000);
   window.addEventListener('pagehide', flushDraft);
 
   // ---------- Opstart ----------
@@ -691,6 +695,7 @@
       } else {
         S.settings = Object.assign(defaultSettings(), settings);
         S.screen = 'home';
+        closeStaleShifts();
       }
       render();
     })
