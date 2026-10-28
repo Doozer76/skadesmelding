@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.9-test';
+  const APP_VERSION = '1.0.10-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -246,7 +246,7 @@
       return `<div class="col" style="gap:22px">
         <div class="card" style="display:flex;flex-direction:column;gap:2px"><span class="k">Journalnummer</span><span class="jnr">${esc(p.jnr)}</span><span class="hint">Tildeles automatisk</span></div>
         <div><span class="lbl">Patienten er</span><div class="segs" role="group" aria-label="Patienttype">${seg(p.type === 'Gæst', 'pickType', 'Gæst', 'Gæst')}${seg(p.type === 'Frivillig', 'pickType', 'Frivillig', 'Frivillig')}</div></div>
-        ${p.type === 'Frivillig' ? field('prole', 'Hvilken rolle/funktion?', 'p.role', p.role, 'Fx skuespiller i Charlie') + `<label class="chk"><input type="checkbox" data-f="p.out" ${p.out ? 'checked' : ''}>Udgår</label>` : ''}</div>`;
+        ${p.type === 'Frivillig' ? field('prole', 'Hvilken rolle/funktion?', 'p.role', p.role, 'Fx skuespiller i Charlie') : ''}</div>`;
     },
 
     triage() {
@@ -431,6 +431,7 @@
       ${isFlow && S.p.jnr ? `<div class="jbar"><span>Journalnr. <b>${esc(S.p.jnr)}</b></span><span>${S.editMode ? 'Redigering' : 'Trin ' + stepNo + ' af ' + ORDER.length}</span></div>` : ''}
       <main data-screen="${S.screen}">${V[S.screen]()}</main>
       ${isFlow ? `<footer>${S.err ? `<p class="err">${esc(S.err)}</p>` : ''}
+        ${S.screen === 'patient' && S.p.type === 'Frivillig' ? `<label class="chk"><input type="checkbox" data-f="p.out" ${S.p.out ? 'checked' : ''}>Udgår</label>` : ''}
         ${S.editMode
           ? `<div class="segs"><button class="btn btn-ghost" style="flex:1" data-a="cancelEdit">Annullér</button><button class="btn btn-primary" style="flex:1.5" data-a="saveEdit">Gem</button></div>`
           : S.screen === 'materials'
