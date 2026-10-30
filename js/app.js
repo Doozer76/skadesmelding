@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const APP_VERSION = '1.0.10-test';
+  const APP_VERSION = '1.0.11-test';
   const app = document.getElementById('app');
 
   // ---------- Hjælpere ----------
@@ -15,7 +15,8 @@
   const dt = iso => { if (!iso) return ''; const d = new Date(iso); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + ' ' + tm(iso); };
   const clone = o => JSON.parse(JSON.stringify(o));
   const blankCur = () => ({ partId: '', view: 'front', part: '', kind: '', desc: '', cause: '', loc: '', room: '', locOther: '' });
-  const blankP = () => ({ jnr: '', start: '', end: '', type: '', role: '', out: false, reqTimes: { 'Vagtlæge': '', 'Ambulance': '' }, contact: false, triage: '', urgency: '', injuries: [], cur: blankCur(), treatment: '', infection: false, assist: [], assistOther: '', mats: { 'Plaster': 0, 'Forbinding': 0, 'Støtteforbinding': 0, 'Ispose': 0, 'Andet': 0 }, matOther: '' });
+  const MATS = ['Plaster', 'Forbinding', 'Støtteforbinding', 'Ispose', 'Saltvand', 'Renseserviet', 'Andet'];
+  const blankP = () => ({ jnr: '', start: '', end: '', type: '', role: '', out: false, reqTimes: { 'Vagtlæge': '', 'Ambulance': '' }, contact: false, triage: '', urgency: '', injuries: [], cur: blankCur(), treatment: '', infection: false, assist: [], assistOther: '', mats: Object.fromEntries(MATS.map(m => [m, 0])), matOther: '' });
   const defaultSettings = () => ({ deviceName: '', prefix: 'hh' + String(new Date().getFullYear()).slice(-2), rangeStart: 1, rangeEnd: 199, next: 1, pin: '' });
   const STATUS_TEXT = { lokal: 'Gemt lokalt', 'i kø': 'I kø', sendt: 'Sendt' };
 
@@ -55,7 +56,7 @@
 
   // ---------- Afledte værdier ----------
   const locText = i => !i.loc ? '' : (i.loc === 'Andet' ? (i.locOther || 'Andet') : i.loc + (i.room ? ', rum ' + i.room : ''));
-  const matText = p => Object.keys(p.mats).filter(k => p.mats[k] > 0).map(k => (k === 'Andet' && p.matOther ? p.matOther : k) + ' ×' + p.mats[k]).join(', ');
+  const matText = p => MATS.filter(k => (p.mats[k] || 0) > 0).map(k => (k === 'Andet' && p.matOther ? p.matOther : k) + ' ×' + p.mats[k]).join(', ');
   const assistText = p => p.assist.map(a => a === 'Andet' && p.assistOther ? 'Andet: ' + p.assistOther : (p.reqTimes && p.reqTimes[a] ? a + ' (rekv. ' + p.reqTimes[a] + ')' : a)).join(', ');
   const hasSaar = p => p.injuries.some(i => i.kind === 'Sår') || (p.cur && p.cur.kind === 'Sår');
   // ---------- Dashboard-filtre ----------
@@ -317,8 +318,8 @@
     materials() {
       const p = S.p, n = p.injuries.length;
       return `<div class="col" style="gap:14px"><span class="lbl" style="margin:0">Materialeforbrug</span>
-        ${Object.keys(p.mats).map(m => `<div class="mat">${seg(p.mats[m] > 0, 'matToggle', m, m)}
-          <button class="step" aria-label="Færre ${m}" data-a="matDec" data-arg="${m}">−</button><span class="count" aria-live="polite">${p.mats[m]}</span>
+        ${MATS.map(m => `<div class="mat">${seg((p.mats[m] || 0) > 0, 'matToggle', m, m)}
+          <button class="step" aria-label="Færre ${m}" data-a="matDec" data-arg="${m}">−</button><span class="count" aria-live="polite">${p.mats[m] || 0}</span>
           <button class="step" aria-label="Flere ${m}" data-a="matInc" data-arg="${m}">+</button></div>`).join('')}
         ${p.mats['Andet'] > 0 ? field('mother', 'Andet materiale', 'p.matOther', p.matOther, 'Hvilket materiale?') : ''}
         <p class="hint">${n === 1 ? '1 skade registreret' : n + ' skader registreret'} på denne patient.</p></div>`;
@@ -579,9 +580,9 @@
       if (S.p.reqTimes[n] !== undefined) S.p.reqTimes[n] = on ? '' : (S.p.reqTimes[n] || hhmm());
       render();
     },
-    matInc(n) { S.p.mats[n] = Math.min(99, S.p.mats[n] + 1); render(); },
-    matDec(n) { S.p.mats[n] = Math.max(0, S.p.mats[n] - 1); render(); },
-    matToggle(n) { S.p.mats[n] = S.p.mats[n] > 0 ? 0 : 1; render(); },
+    matInc(n) { S.p.mats[n] = Math.min(99, (S.p.mats[n] || 0) + 1); render(); },
+    matDec(n) { S.p.mats[n] = Math.max(0, (S.p.mats[n] || 0) - 1); render(); },
+    matToggle(n) { S.p.mats[n] = (S.p.mats[n] || 0) > 0 ? 0 : 1; render(); },
     next() {
       const p = S.p, cur = p.cur;
       switch (S.screen) {

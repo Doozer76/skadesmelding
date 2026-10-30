@@ -3,7 +3,7 @@
  */
 (function () {
   'use strict';
-  const MATS = ['Plaster', 'Forbinding', 'Støtteforbinding', 'Ispose', 'Andet'];
+  const MATS = ['Plaster', 'Forbinding', 'Støtteforbinding', 'Ispose', 'Saltvand', 'Renseserviet', 'Andet'];
   const pad = n => String(n).padStart(2, '0');
   const d = iso => (iso ? new Date(iso) : null);
   const date = iso => { const x = d(iso); return x ? x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()) : ''; };
